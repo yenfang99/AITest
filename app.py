@@ -29,14 +29,13 @@ if 'skin_data' not in st.session_state:
 
 # ==================== DATA LOADING FROM HUGGING FACE ====================
 
-# Add this function to download data from Hugging Face
 @st.cache_data
 def download_data_from_hf(repo_id="tanyfff/Aitest"):
     """Download data files from Hugging Face Hub"""
     try:
-        # Hugging Face token for authentication
-        token = "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"
-        
+        # ✅ Use token from Streamlit secrets instead of hardcoding
+        token = st.secrets["huggingface"]["token"]
+
         # Download CSV files
         products_path = hf_hub_download(
             repo_id=repo_id, 
@@ -62,7 +61,7 @@ def download_data_from_hf(repo_id="tanyfff/Aitest"):
             local_dir="./hf_data",
             token=token
         )
-        
+
         # Download model files
         embeddings_path = hf_hub_download(
             repo_id=repo_id, 
@@ -76,7 +75,7 @@ def download_data_from_hf(repo_id="tanyfff/Aitest"):
             local_dir="./hf_data",
             token=token
         )
-        
+
         return {
             'products': products_path,
             'filtered': filtered_path,
