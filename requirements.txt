@@ -2,12 +2,13 @@ streamlit
 pandas
 numpy
 scikit-learn
-scikit-surprise==1.1.3 --only-binary :all:
+scikit-surprise
 plotly
 streamlit-option-menu
 huggingface_hub
 joblib
 tqdm
 gensim
+
 
 
