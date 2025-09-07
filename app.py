@@ -34,38 +34,47 @@ if 'skin_data' not in st.session_state:
 def download_data_from_hf(repo_id="tanyfff/Aitest"):
     """Download data files from Hugging Face Hub"""
     try:
+        # Hugging Face token for authentication
+        token = "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"
+        
         # Download CSV files
         products_path = hf_hub_download(
             repo_id=repo_id, 
             filename="data/CleanedDataSet/products_preprocessed.csv",
-            local_dir="./hf_data"
+            local_dir="./hf_data",
+            token=token
         )
         filtered_path = hf_hub_download(
             repo_id=repo_id, 
             filename="data/CleanedDataSet/filtered_skincare_products.csv",
-            local_dir="./hf_data"
+            local_dir="./hf_data",
+            token=token
         )
         train_path = hf_hub_download(
             repo_id=repo_id, 
             filename="data/CleanedDataSet/train_skincare.csv",
-            local_dir="./hf_data"
+            local_dir="./hf_data",
+            token=token
         )
         collab_path = hf_hub_download(
             repo_id=repo_id, 
             filename="data/CleanedDataSet/collaborative_training_data.csv",
-            local_dir="./hf_data"
+            local_dir="./hf_data",
+            token=token
         )
         
         # Download model files
         embeddings_path = hf_hub_download(
             repo_id=repo_id, 
             filename="models/product_embeddings.pkl",
-            local_dir="./hf_data"
+            local_dir="./hf_data",
+            token=token
         )
         svd_path = hf_hub_download(
             repo_id=repo_id, 
             filename="models/surprise_svd_model.pkl",
-            local_dir="./hf_data"
+            local_dir="./hf_data",
+            token=token
         )
         
         return {
