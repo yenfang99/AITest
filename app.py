@@ -1,12 +1,15 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from recommender import EnhancedHybridRecommender, CollaborativeRecommender
+from utils.recommender import EnhancedHybridRecommender, CollaborativeRecommender
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import plotly.express as px
 from streamlit_option_menu import option_menu
 import re
+from huggingface_hub import hf_hub_download
+import os
+import joblib
 
 # ==================== APPLICATION CONFIGURATION ====================
 st.set_page_config(
@@ -24,11 +27,96 @@ if 'selected_model' not in st.session_state:
 if 'skin_data' not in st.session_state:
     st.session_state.skin_data = {}
 
-# ==================== DATA LOADING ====================
-@st.cache_data(show_spinner=True)
-def load_content_products(path="data/CleanedDataSet/products_preprocessed.csv"):
+# ==================== DATA LOADING FROM HUGGING FACE ====================
+
+# Add this function to download data from Hugging Face
+@st.cache_data
+def download_data_from_hf(repo_id="tanyfff/Aitest"):
+    """Download data files from Hugging Face Hub"""
     try:
-        df = pd.read_csv(path)
+        # Download CSV files
+        products_path = hf_hub_download(
+            repo_id=repo_id, 
+            filename="data/CleanedDataSet/products_preprocessed.csv",
+            local_dir="./hf_data"
+        )
+        filtered_path = hf_hub_download(
+            repo_id=repo_id, 
+            filename="data/CleanedDataSet/filtered_skincare_products.csv",
+            local_dir="./hf_data"
+        )
+        train_path = hf_hub_download(
+            repo_id=repo_id, 
+            filename="data/CleanedDataSet/train_skincare.csv",
+            local_dir="./hf_data"
+        )
+        collab_path = hf_hub_download(
+            repo_id=repo_id, 
+            filename="data/CleanedDataSet/collaborative_training_data.csv",
+            local_dir="./hf_data"
+        )
+        
+        # Download model files
+        embeddings_path = hf_hub_download(
+            repo_id=repo_id, 
+            filename="models/product_embeddings.pkl",
+            local_dir="./hf_data"
+        )
+        svd_path = hf_hub_download(
+            repo_id=repo_id, 
+            filename="models/surprise_svd_model.pkl",
+            local_dir="./hf_data"
+        )
+        
+        return {
+            'products': products_path,
+            'filtered': filtered_path,
+            'train': train_path,
+            'collab': collab_path,
+            'embeddings': embeddings_path,
+            'svd': svd_path
+        }
+    except Exception as e:
+        st.error(f"Error downloading data from Hugging Face: {e}")
+        st.info("Using local fallback data...")
+        return None
+
+@st.cache_data(show_spinner=True)
+def load_content_products():
+    # Try to download from Hugging Face first
+    data_paths = download_data_from_hf("tanyfff/Aitest")  # Replace with your repo
+    
+    if data_paths:
+        try:
+            df = pd.read_csv(data_paths['products'])
+        except Exception as e:
+            st.warning(f"Could not load from Hugging Face, using local fallback: {e}")
+            df = None
+    else:
+        df = None
+    
+    # Fallback to local file if Hugging Face fails
+    if df is None:
+        try:
+            df = pd.read_csv("data/CleanedDataSet/products_preprocessed.csv")
+        except:
+            # Ultimate fallback - dummy data
+            df = pd.DataFrame({
+                'product_id': ['P001', 'P002', 'P003'],
+                'product_name': ['Moisturizing Cream', 'Cleansing Gel', 'Anti-Aging Serum'],
+                'brand_name': ['Brand A', 'Brand B', 'Brand C'],
+                'tertiary_category': ['Moisturizers', 'Cleansers', 'Serums'],
+                'price_usd': [25.99, 18.50, 32.75],
+                'rating': [4.5, 4.0, 4.8],
+                'reviews': [100, 80, 120],
+                'skin_type': ['Dry', 'Oily', 'Normal'],
+                'skin_concern': ['Dehydration', 'Acne', 'Aging'],
+                'product_content': ['moisturizer dry dehydration', 'cleanser oily acne', 'serum normal aging']
+            })
+            return df
+    
+    # Process the dataframe
+    try:
         for c in ["price_usd", "rating", "reviews"]:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -51,9 +139,39 @@ def load_content_products(path="data/CleanedDataSet/products_preprocessed.csv"):
         })
 
 @st.cache_data(show_spinner=True)
-def load_detail_products(path="data/CleanedDataSet/filtered_skincare_products.csv"):
+def load_detail_products():
+    # Try to download from Hugging Face first
+    data_paths = download_data_from_hf("tanyfff/Aitest")  # Replace with your repo
+    
+    if data_paths:
+        try:
+            products_df = pd.read_csv(data_paths['filtered'])
+        except Exception as e:
+            st.warning(f"Could not load from Hugging Face, using local fallback: {e}")
+            products_df = None
+    else:
+        products_df = None
+    
+    # Fallback to local file if Hugging Face fails
+    if products_df is None:
+        try:
+            products_df = pd.read_csv("data/CleanedDataSet/filtered_skincare_products.csv")
+        except:
+            # Ultimate fallback - dummy data
+            return pd.DataFrame({
+                'product_id': ['P001', 'P002', 'P003'],
+                'product_name': ['Moisturizing Cream', 'Cleansing Gel', 'Anti-Aging Serum'],
+                'brand_name': ['Brand A', 'Brand B', 'Brand C'],
+                'tertiary_category': ['Moisturizers', 'Cleansers', 'Serums'],
+                'price_usd': [25.99, 18.50, 32.75],
+                'rating': [4.5, 4.0, 4.8],
+                'reviews': [100, 80, 120],
+                'ingredients': ['["Water", "Glycerin"]', '["Salicylic Acid"]', '["Retinol"]'],
+                'highlights': ['Hydrates;Non-greasy', 'Deep cleansing', 'Reduces wrinkles']
+            })
+    
+    # Process the dataframe
     try:
-        products_df = pd.read_csv(path)
         for c in ["price_usd", "rating", "reviews"]:
             if c in products_df.columns:
                 products_df[c] = pd.to_numeric(products_df[c], errors="coerce")
@@ -71,8 +189,8 @@ def load_detail_products(path="data/CleanedDataSet/filtered_skincare_products.cs
             'highlights': ['Hydrates;Non-greasy', 'Deep cleansing', 'Reduces wrinkles']
         })
 
-content_df = load_content_products("data/CleanedDataSet/products_preprocessed.csv")
-detail_products_df = load_detail_products("data/CleanedDataSet/filtered_skincare_products.csv")
+content_df = load_content_products()
+detail_products_df = load_detail_products()
 
 @st.cache_resource(show_spinner=True)
 def build_vectorizer_and_matrix(product_text: pd.Series):
@@ -82,20 +200,13 @@ def build_vectorizer_and_matrix(product_text: pd.Series):
 
 vectorizer, tfidf_matrix = build_vectorizer_and_matrix(content_df["product_content"])
 
-# NEW:
-name_to_idx = {
-    str(s).strip().lower(): i
-    for i, s in enumerate(content_df["product_name"].fillna(""))
-}
-
 def contentbased_recommender(
     product_type=None,
     skin_type=None,
     skin_concern=None,
     concern_match="all",
     max_price=None,
-    n=10,
-    query_product=None  # NEW
+    n=10
 ):
     def _to_set(x):
         if x is None or (isinstance(x, float) and pd.isna(x)):
@@ -108,32 +219,19 @@ def contentbased_recommender(
     req_skin = str(skin_type).strip().lower() if skin_type else None
     req_concern = _to_set(skin_concern)
 
-    # -------- similarity vector --------
-    sims = None
-    if query_product:
-        key = str(query_product).strip().lower()
-        if key in name_to_idx:
-            qidx = name_to_idx[key]
-            sims = cosine_similarity(tfidf_matrix[qidx:qidx+1], tfidf_matrix).ravel()
-        else:
-            # fallback: no query available -> treat as 0 similarity
-            sims = np.zeros(len(content_df), dtype=float)
-    else:
-        # no query -> use profile text like before (keeps current behavior)
-        tokens = []
-        if req_type: tokens.append(req_type)
-        if req_skin: tokens.append(req_skin)
-        if req_concern: tokens.extend(sorted(req_concern))
-        profile_text = " ".join(tokens).strip() or "skincare"
-        qv = vectorizer.transform([profile_text])
-        sims = cosine_similarity(qv, tfidf_matrix).ravel()
+    tokens = []
+    if req_type: tokens.append(req_type)
+    if req_skin: tokens.append(req_skin)
+    if req_concern: tokens.extend(sorted(req_concern))
+    profile_text = " ".join(tokens).strip() or "skincare"
 
-    # -------- columns --------
-    price_col   = pd.to_numeric(content_df.get("price_usd", np.nan), errors="coerce")
-    rating_col  = pd.to_numeric(content_df.get("rating", np.nan), errors="coerce").fillna(0.0)
+    qv = vectorizer.transform([profile_text])
+    sims = cosine_similarity(qv, tfidf_matrix).ravel()
+
+    price_col = pd.to_numeric(content_df.get("price_usd", np.nan), errors="coerce")
+    rating_col = pd.to_numeric(content_df.get("rating", np.nan), errors="coerce").fillna(0.0)
     reviews_col = pd.to_numeric(content_df.get("reviews", 0), errors="coerce").fillna(0).astype(int)
 
-    # -------- filtering --------
     rows = []
     for i, sim in enumerate(sims):
         row = content_df.iloc[i]
@@ -142,7 +240,7 @@ def contentbased_recommender(
             continue
 
         row_skin = str(row.get("skin_type", "")).strip().lower()
-        if req_skin and row_skin and req_skin not in {t.strip() for t in row_skin.split(",") if t.strip()}:
+        if req_skin and row_skin and row_skin != req_skin:
             continue
 
         row_concern = _to_set(row.get("skin_concern", ""))
@@ -158,22 +256,17 @@ def contentbased_recommender(
         if max_price is not None and (pd.isna(p) or p > float(max_price)):
             continue
 
-        # skip the same item if user picked a query product
-        if query_product:
-            if str(row.get("product_name", "")).strip().lower() == str(query_product).strip().lower():
-                continue
-
         rows.append({
-            "product_id":   str(row.get("product_id", "")),
+            "product_id": str(row.get("product_id", "")),
             "product_name": row.get("product_name", ""),
-            "brand_name":   row.get("brand_name", ""),
+            "brand_name": row.get("brand_name", ""),
             "product_type": row.get("product_type", ""),
-            "skin_type":    row.get("skin_type", ""),
+            "skin_type": row.get("skin_type", ""),
             "skin_concern": row.get("skin_concern", ""),
-            "price_usd":    row.get("price_usd", ""),
-            "rating":       rating_col.iat[i],
-            "reviews":      reviews_col.iat[i],
-            "similarity":   float(sim)
+            "price_usd": row.get("price_usd", ""),
+            "rating": rating_col.iat[i],
+            "reviews": reviews_col.iat[i],
+            "similarity": float(sim)
         })
 
     out = pd.DataFrame(rows)
@@ -307,13 +400,27 @@ def display_product_card(product, col):
 @st.cache_resource
 def load_recommenders():
     try:
-        hybrid_rec = EnhancedHybridRecommender(
-            train_path="data/CleanedDataSet/train_skincare.csv",
-            products_path="data/CleanedDataSet/filtered_skincare_products.csv",
-            content_model_path="models/product_embeddings.pkl",
-            svd_model_path="models/surprise_svd_model.pkl"
-        )
-        collab_rec = CollaborativeRecommender("data/CleanedDataSet/collaborative_training_data.csv")
+        # Try to get data paths from Hugging Face
+        data_paths = download_data_from_hf("tanyfff/Aitest")  # Replace with your repo
+        
+        if data_paths:
+            hybrid_rec = EnhancedHybridRecommender(
+                train_path=data_paths['train'],
+                products_path=data_paths['filtered'],
+                content_model_path=data_paths['embeddings'],
+                svd_model_path=data_paths['svd']
+            )
+            collab_rec = CollaborativeRecommender(data_paths['collab'])
+        else:
+            # Fallback to local paths
+            hybrid_rec = EnhancedHybridRecommender(
+                train_path="data/CleanedDataSet/train_skincare.csv",
+                products_path="data/CleanedDataSet/filtered_skincare_products.csv",
+                content_model_path="models/product_embeddings.pkl",
+                svd_model_path="models/surprise_svd_model.pkl"
+            )
+            collab_rec = CollaborativeRecommender("data/CleanedDataSet/collaborative_training_data.csv")
+        
         return hybrid_rec, collab_rec
     except Exception as e:
         st.error(f"❌ Error loading recommenders: {str(e)}")
@@ -490,8 +597,6 @@ elif st.session_state.current_page == 'skin_analysis':
                                 ["", "Under $25", "$25-$50", "$50-$100", "Over $100"],
                                 help="Your preferred price range")
         
-        # (Anchor product picker is handled in the Content-Based form below)
-
         concerns = st.multiselect(
             "Main Skin Concerns",
             ["Acne", "Redness", "Dehydration", "Aging", "Pigmentation", "Sensitivity", "Dullness", "Large pores"],
@@ -548,7 +653,7 @@ elif st.session_state.current_page == 'input_form':
                     product_type = st.selectbox("Product Type", ["(any)"] + sorted(content_df['product_type'].unique()),
                                                help="Select a product category (optional)")
                 with col2:
-                    budget = st.selectbox("Budget Preference", ["(any)", "Under $25", "Under $50", "Under $100", "Under $200"],
+                    budget = st.selectbox("Budget Preference", ["(any)", "Under $25", "$25-$50", "$50-$100", "Over $100", "No budget limit"],
                                         help="Your preferred price range")
                 
                 concerns = st.multiselect(
@@ -558,14 +663,6 @@ elif st.session_state.current_page == 'input_form':
                 )
                 
                 concern_match = st.radio("Concern Match", ["all", "any"], index=1, help="Match all concerns or any concern")
-
-                # NEW: Anchor product picker for Content-Based
-                query_product = st.selectbox(
-                    "Anchor product (optional)",
-                    options=["(none)"] + sorted(content_df["product_name"].dropna().unique().tolist()),
-                    index=0,
-                    help="Pick a product to find similar items."
-                )
             
             num_products = st.slider("Number of Recommendations", 1, 50, 5,
                                    help="How many products would you like to see?")
@@ -590,8 +687,7 @@ elif st.session_state.current_page == 'input_form':
                         'budget': None if budget == "(any)" else budget,
                         'num_products': num_products,
                         'product_type': None if product_type == "(any)" else product_type,
-                        'concern_match': concern_match,
-                        'query_product': None if query_product == "(none)" else query_product  # NEW
+                        'concern_match': concern_match
                     }
                 st.session_state.current_page = 'recommendations'
                 st.rerun()
@@ -668,8 +764,7 @@ elif st.session_state.current_page == 'recommendations':
                     st.write(f"**User Type:** 🎯 Experienced User - {user_rating_count} ratings")
 
     st.subheader("Recommended For You")
-    if model_type == 'hybrid':
-        st.write("🎯 Higher concern score = Better for your specific skin issues  ⭐ Higher rating = More customers loved this product  💰 All prices are within your budget")
+    st.write("🎯 Higher concern score = Better for your specific skin issues  ⭐ Higher rating = More customers loved this product  💰 All prices are within your budget")
     st.write("")
 
     recommendations = []
@@ -730,12 +825,14 @@ elif st.session_state.current_page == 'recommendations':
                 max_price = None
                 if skin_data['budget'] == "Under $25":
                     max_price = 25
-                elif skin_data['budget'] == "Under $50":
+                elif skin_data['budget'] == "$25-$50":
                     max_price = 50
-                elif skin_data['budget'] == "Under $100":
+                elif skin_data['budget'] == "$50-$100":
                     max_price = 100
-                elif skin_data['budget'] == "Under $200":
-                    max_price = 200
+                elif skin_data['budget'] == "Over $100":
+                    max_price = float("inf")
+                elif skin_data['budget'] == "No budget limit":
+                    max_price = float("inf")
                 
                 recommendations = contentbased_recommender(
                     product_type=skin_data.get('product_type'),
@@ -743,10 +840,8 @@ elif st.session_state.current_page == 'recommendations':
                     skin_concern=skin_data.get('concerns'),
                     concern_match=skin_data.get('concern_match', 'any'),
                     max_price=max_price,
-                    n=skin_data['num_products'],
-                    query_product=skin_data.get('query_product')   # already wired
+                    n=skin_data['num_products']
                 )
-
                 recommendations_df = recommendations  # Already a DataFrame
                 if recommendations.empty:
                     st.warning("No recommendations found. Try selecting fewer concerns, choosing 'any' for concern match, or leaving product type, skin type, and budget as '(any)'.")
