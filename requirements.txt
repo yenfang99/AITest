@@ -2,6 +2,8 @@ streamlit
 pandas
 numpy
 scikit-learn
-surprise
+scikit-surprise
 plotly
 streamlit-option-menu
+tqdm
+joblib
