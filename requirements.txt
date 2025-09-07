@@ -1,3 +1,4 @@
+--prefer-binary
 streamlit==1.38.0
 pandas==2.2.2
 numpy==1.26.4
@@ -9,3 +10,4 @@ huggingface_hub==0.24.6
 joblib==1.4.2
 tqdm==4.66.5
 gensim==4.3.3
+
