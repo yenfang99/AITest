@@ -5,5 +5,7 @@ scikit-learn
 scikit-surprise
 plotly
 streamlit-option-menu
-tqdm
+huggingface_hub
 joblib
+tqdm
+gensim
